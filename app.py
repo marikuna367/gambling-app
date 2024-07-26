@@ -1,7 +1,8 @@
 from flask import Flask, request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity**
+from datetime import timedelta
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
@@ -32,8 +33,8 @@ def create_user():
         return jsonify({"error": "Username, email, and password are required"}), 400
 
     existing_user = User.query.filter(
-         (User.username == username) | (User.email == email)
-     ).first()
+        (User.username == username) | (User.email == email)
+    ).first()
     
     if existing_user:
         return jsonify({"error": "Username or email already exists"}), 400
@@ -58,20 +59,36 @@ def sign_in():
     user = User.query.filter_by(email=email).first()
 
     if user and check_password_hash(user.password, password):
-        access_token = create_access_token(identity=user.id)
+        access_token = create_access_token(identity=user.id, expires_delta=timedelta(days=9*30))
         return jsonify(access_token=access_token), 200
     else:
         return jsonify({"error": "Invalid credentials"}), 401
 
-@app.route('/protected', methods=['GET'])
+@app.route('/update_profile', methods=['PUT'])
 @jwt_required()
-def protected():
+def update_profile():
     current_user_id = get_jwt_identity()
     user = User.query.get(current_user_id)
-    return jsonify(logged_in_as=user.username), 200
+
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    data = request.get_json()
+    bio = data.get('bio')
+    avatar_url = data.get('avatar_url')
+
+    if bio:
+        user.bio = bio
+    if avatar_url:
+        user.avatar_url = avatar_url
+
+    db.session.commit()
+
+    return jsonify({"message": "Profile updated successfully"}), 200
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     app.run(debug=True)
+
 
